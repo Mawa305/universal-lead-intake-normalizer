@@ -1,0 +1,336 @@
+{
+  "name": "Universal Lead Intake Normalizer",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -96
+      ],
+      "id": "899159df-5cf9-4e8e-9365-e205dce51b68",
+      "name": "Receive Lead"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $json.body || {};\nconst pick = (...keys) => {\n  for (const k of keys) if (b[k]) return String(b[k]).trim();\n  return '';\n};\nconst phoneRaw = pick('phone', 'mobile', 'phone_number', 'contact');\nreturn [{ json: {\n  name: pick('name', 'full_name', 'customer', 'customer_name'),\n  phone: phoneRaw.replace(/[^\\d+]/g, ''),\n  email: pick('email', 'email_address').toLowerCase(),\n  service: pick('service', 'service_needed', 'issue'),\n  message: pick('message', 'notes', 'details'),\n  source: pick('source', 'channel') || 'unknown',\n  received_at: new Date().toISOString()\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -96
+      ],
+      "id": "2c3e4fa9-818a-4e22-897d-2669eadee48c",
+      "name": "Normalize Lead"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4df3e3b0-186e-4812-9eeb-afb5fe240d24",
+              "leftValue": "={{ $json.name }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "e8ea5c6a-f604-41b5-8741-8af5207725e6",
+              "leftValue": "={{ $json.phone.length >= 10 || $json.email.includes('@') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        -96
+      ],
+      "id": "d77395fa-3ec3-4358-b160-35011f33727b",
+      "name": "Is Valid Lead"
+    },
+    {
+      "parameters": {
+        "tableId": "invalid_leads",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "raw",
+              "fieldValue": "={{ JSON.stringify($('Receive Lead').item.json.body) }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "id": "520fdb6f-1208-43b2-99c6-f375b3e29025",
+      "name": "Log Invalid Lead",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "leads",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone",
+              "condition": "eq",
+              "keyValue": "={{ $('Normalize Lead').item.json.phone }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -192
+      ],
+      "id": "06453101-7ce2-47a9-b7c9-2f238e586bb4",
+      "name": "Check Duplicate",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "205c5b50-a640-432c-b424-391148f99fdb",
+              "leftValue": "={{ !$json.id || $('Normalize Lead').item.json.phone === '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        -192
+      ],
+      "id": "8bca33b4-e8f9-478c-9099-fb7a1c85311e",
+      "name": "Is New Lead"
+    },
+    {
+      "parameters": {
+        "tableId": "leads",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "name",
+              "fieldValue": "={{ $('Normalize Lead').item.json.name }}"
+            },
+            {
+              "fieldId": "phone",
+              "fieldValue": "={{ $('Normalize Lead').item.json.phone }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $('Normalize Lead').item.json.email }}"
+            },
+            {
+              "fieldId": "service",
+              "fieldValue": "={{ $('Normalize Lead').item.json.service }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $('Normalize Lead').item.json.message }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $('Normalize Lead').item.json.source }}"
+            },
+            {
+              "fieldId": "received_at",
+              "fieldValue": "={{ $('Normalize Lead').item.json.received_at }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -208
+      ],
+      "id": "9d6025f8-7855-4505-a77e-3558142f94fb",
+      "name": "Save Lead",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=Lead save failed! Add manually: Name: {{ $('Normalize Lead').item.json.name }} Phone: {{ $('Normalize Lead').item.json.phone }} Email: {{ $('Normalize Lead').item.json.email }} Service: {{ $('Normalize Lead').item.json.service }} Source: {{ $('Normalize Lead').item.json.source }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        -192
+      ],
+      "id": "f1d00528-b2a3-41dd-860a-e4642838ef13",
+      "name": "Alert Lead Save Failed",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Lead": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead": {
+      "main": [
+        [
+          {
+            "node": "Is Valid Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid Lead": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Invalid Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Is New Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Lead": {
+      "main": [
+        [
+          {
+            "node": "Save Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Alert Lead Save Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "id": "",
+  "tags": []
+}
